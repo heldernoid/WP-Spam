@@ -1,0 +1,125 @@
+{
+ "dev": {
+  "counts": {
+   "ceas": {
+    "ham": 1000,
+    "spam": 1000
+   },
+   "enron": {
+    "ham": 1000,
+    "spam": 1000
+   },
+   "hannousse_url": {
+    "ham": 961,
+    "phish": 967
+   },
+   "ling": {
+    "ham": 472,
+    "spam": 90
+   },
+   "mendeley_sms": {
+    "ham": 985,
+    "phish": 92,
+    "spam": 76
+   },
+   "moz_sms": {
+    "ham": 392,
+    "phish": 111
+   },
+   "nazario": {
+    "phish": 290
+   },
+   "nigerian": {
+    "phish": 635
+   },
+   "spamassassin": {
+    "ham": 828,
+    "spam": 350
+   }
+  },
+  "file": "data/dev.jsonl",
+  "sha256": "9ab9fd06f8fea43f2b6b8655a34b6d686bd5024eeb891b4a04e72e9599b0f1ed"
+ },
+ "study": {
+  "counts": {
+   "ceas": {
+    "ham": 10263,
+    "spam": 11289
+   },
+   "enron": {
+    "ham": 9325,
+    "spam": 8378
+   },
+   "hannousse_url": {
+    "ham": 2868,
+    "phish": 2860
+   },
+   "ling": {
+    "ham": 1452,
+    "spam": 273
+   },
+   "mendeley_sms": {
+    "ham": 2878,
+    "phish": 341,
+    "spam": 285
+   },
+   "moz_sms": {
+    "ham": 1228,
+    "phish": 324
+   },
+   "nazario": {
+    "phish": 957
+   },
+   "nigerian": {
+    "phish": 1965
+   },
+   "spamassassin": {
+    "ham": 2443,
+    "spam": 1012
+   }
+  },
+  "file": "data/study.jsonl",
+  "sha256": "634d4a498c1dbf592671122f7ba3eda98350ff18e58e2449d49cbb52f184d05a"
+ },
+ "test": {
+  "counts": {
+   "ceas": {
+    "ham": 1000,
+    "spam": 1000
+   },
+   "enron": {
+    "ham": 1000,
+    "spam": 1000
+   },
+   "hannousse_url": {
+    "ham": 1000,
+    "phish": 1000
+   },
+   "ling": {
+    "ham": 475,
+    "spam": 92
+   },
+   "mendeley_sms": {
+    "ham": 971,
+    "phish": 110,
+    "spam": 93
+   },
+   "moz_sms": {
+    "ham": 388,
+    "phish": 111
+   },
+   "nazario": {
+    "phish": 304
+   },
+   "nigerian": {
+    "phish": 650
+   },
+   "spamassassin": {
+    "ham": 819,
+    "spam": 338
+   }
+  },
+  "file": "data/sealed/test.jsonl",
+  "sha256": "ef7401e445eba6a320f683dc12917c9020f2aeb415a494b16e93abf51e916ffb"
+ }
+}

@@ -1,0 +1,55 @@
+// node tests/run.mjs : engine, weights, examples, sizes. No dataset needed.
+import fs from 'fs';
+import crypto from 'crypto';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const W = require('../engine/spam.js');
+let pass = 0, fail = 0;
+const t = (name, ok) => { if (ok) pass++; else { fail++; console.log('FAIL', name); } };
+const sha = f => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+// The weights the sealed test ran on (eval/test-runs.md). Change this only after a new sealed run.
+t('weights are the sealed-test network', sha('weights/spam.json').startsWith('076a06de1af4'));
+t('web model is the weights', sha('web/model/spam.json') === sha('weights/spam.json'));
+t('web engine is the engine', sha('web/spam.js') === sha('engine/spam.js'));
+const m = W.parse(fs.readFileSync('weights/spam.json', 'utf8'));
+const p = s => W.run(m, s).p;
+t('tokenize url', W.tokenize('see http://a.example.com/x?y=1 now').some(x => x.w.startsWith('http://a.example.com')));
+t('tokenize email', W.tokenize('mail jose@example.org').some(x => x.w === 'jose@example.org'));
+t('url features: cms path', W.urlFeatures(m, 'http://x.com/wp-content/a/b').includes('cmsPath'));
+t('url features: asset folder', W.urlFeatures(m, 'http://x.com/includes/ourtime/index.php').includes('assetDir'));
+t('url features: known site', W.urlFeatures(m, 'https://en.wikipedia.org/wiki/Spam').includes('knownSite'));
+t('url features: repeated segment', W.urlFeatures(m, 'http://x.com/test/test/').includes('repeatSeg'));
+t('url features: ip', W.urlFeatures(m, 'http://192.168.1.10/login').includes('ip'));
+t('advance fee', p('Dear Friend, I am a barrister. The late client left US$ 12,500,000 with no next of kin. You will receive 40 percent. Kindly reply, strictly confidential.') > 0.9);
+t('prize sms', p('URGENT! You have won a £1,000 cash prize! To claim call 09061701461 now. T&Cs 150p/min') > 0.9);
+t('mailbox phish', p('Dear user@example.org, your mailbox has exceeded its quota. Verify your password within 24 hours: http://x.example.tk/wp-content/login.php') > 0.9);
+t('pt wrong-transfer scam', p('Boa tarde, enviei 1500MT para o seu numero por engano. Por favor devolva neste numero 841234567, vem em nome de Ana') > 0.9);
+t('pt receipt is ham', p('Confirmado 9XY12AB34CD. Transferiste 500.00MT e a taxa foi de 5.00MT para 841234567. O teu novo saldo M-Pesa e de 1,250.00MT.') < 0.5);
+t('colleague is ham', p('Hi Maria, thanks for the draft. I think the Q3 forecast is high. Can we discuss it at the team meeting on Thursday? Let me know.\n> please review the attached\nRegards, Tom') < 0.1);
+t('friend sms is ham', p('haha ok see u at dinner tonight, gonna be a bit late lor') < 0.5);
+t('obfuscated pharma', p('Cheap v1agra and c-i-a-l-i-s, no prescription, order now http://pills.example.top') > 0.9);
+t('word salad', W.run(m, 'switzer pillory repel steeplebush veritable sprout hurty troubleshoot storage classify negate cyanamid cheery flown bricklaying peril handkerchief pothole pellet frankfurter clearheaded', { trace: true }).hidden.salad > 0);
+t('empty text', p('') < 0.5);
+t('win-win with a smiley is ham', p('In sweden they eat a lot of kannelbulle. Its an instant gratification of sugar and you gain happiness :) win-win') < 0.5);
+t('spaced link rejoined', W.run(m, 'buy now at http : / / www . cheap-pills . com', { trace: true }).F.url > 0);
+t('sentence roles present', W.run(m, 'You won a prize. Call 09061701461 now.', { trace: true }).roles.contact > 0);
+// character layer, letter pairs, newer concepts
+const hit = w => W.wordVec(m, w).hit;
+t('char layer: digit look-alike', hit('v1agra') === 'viagra');
+t('char layer: inside a word', hit('buycialis') === null || hit('cheapviagra') === 'viagra');
+t('char layer: "specialist" is not cialis', hit('specialist') !== 'cialis');
+t('char layer: "mail" is not "mall"', hit('mail') !== 'mall');
+t('char layer: cyrillic look-alike', hit('p\u0430ypal') === 'paypal');
+t('letter pairs: fragments cannot be read aloud', W.run(m, 'ilan geoe twa nonee dtowa wee ddeli avai dia nloa bleforimme tedow etoge', { trace: true }).F.unpron > 0);
+t('sextortion', p('I recorded you through your webcam while you visited adult sites. Send 0.05 BTC to this wallet within 48 hours or I send the video to all your contacts.') > 0.9);
+t('parcel fee', p('Your parcel could not be delivered. Pay the 1.99 GBP redelivery fee: http://royalmail-redeliver.top/pay') > 0.9);
+t('family chat is ham', p('hey mom, we went to the beach yesterday, so tired lol. see you tomorrow at 7pm?') < 0.1);
+t('agreed money between friends is ham', p('Ola mano, envia aquele valor como combinado para este numero 841234567') < 0.5);
+t('order delivered is ham', p('Dear Sam Riley, your order has been delivered. Thank you for shopping with us.') < 0.5);
+t('36 heads in two layers', m.heads.length === 36 && new Set(m.heads.map(h => h.layer)).size === 2);
+t('25,000-30,000 non-zero params', (() => { let n = Object.values(m.chars).reduce((a, r) => a + Object.keys(r).length, 0) + m.letterRare.length + m.letterOnset.length + 1; for (const [p0, , r] of m.filters) n += p0.length + Object.keys(m.rows[r]).length; for (const [k, r] of Object.entries(m.phrases)) n += k.split(' ').length + Object.keys(m.rows[r]).length; for (const [p0, , r] of m.affixes) n += p0.length + Object.keys(m.rows[r]).length; for (const r of Object.values(m.shapes)) n += Object.keys(r).length; for (const r of Object.values(m.url.rows)) n += Object.keys(r).length; for (const a of Object.values(m.url.sets)) n += a.length; for (const h of m.heads) n += Object.keys(h.query).length + Object.keys(h.key).length + 4; for (const r of m.roles) n += Object.keys(r.w).length + 1; n += m.arcs.length; for (const L of m.mlp) for (const h of L) n += Object.keys(h.w || {}).length + Object.keys(h.h || {}).length + 1; n += Object.keys(m.out.w).length + Object.keys(m.out.hidden).length + 1; return n >= 25000 && n <= 30000; })());
+t('weights under 1 MB', fs.statSync('weights/spam.json').size < 1024 * 1024);
+t('long text is fast', (() => { const s = 'word '.repeat(20000); const t0 = Date.now(); p(s); return Date.now() - t0 < 2000; })());
+for (const f of fs.readdirSync('web', { recursive: true })) { const st = fs.statSync('web/' + f); if (st.isFile()) t('under 2 MB: ' + f, st.size < 2 * 1024 * 1024); }
+console.log(`${pass}/${pass + fail} passed`);
+process.exit(fail ? 1 : 0);

@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WP-Spam</title>
+<meta name="description" content="Paste an e-mail, SMS or link and watch a neural network whose weights were written by hand, not trained, decide whether it is spam, a scam or phishing, and show why.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="WP-Spam">
+<meta property="og:title" content="WP-Spam">
+<meta property="og:description" content="Paste an e-mail, SMS or link and watch a neural network whose weights were written by hand, not trained, decide whether it is spam, a scam or phishing, and show why.">
+<meta property="og:url" content="https://heldernoid.github.io/WP-Spam/">
+<meta property="og:image" content="https://heldernoid.github.io/WP-Spam/apple-touch-icon.png">
+<meta property="og:image:width" content="180">
+<meta property="og:image:height" content="180">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="WP-Spam">
+<meta name="twitter:description" content="Paste an e-mail, SMS or link and watch a neural network whose weights were written by hand, not trained, decide whether it is spam, a scam or phishing, and show why.">
+<meta name="twitter:image" content="https://heldernoid.github.io/WP-Spam/apple-touch-icon.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a sorting desk. A slim masthead with four views (as WP-CharNet and WP-Ductus): Try it (the message and the
+   verdict), Inside the network (every layer's reading of the message), How far to trust it, How it's made. */
+:root {
+  --paper: #f5f3ee;      /* page: unbleached envelope paper */
+  --sheet: #fffdf9;      /* panels */
+  --ink: #1d1b17;
+  --muted: #625e55;
+  --rule: #e0dbd0;
+  --accent: #2f4f86;     /* postal blue: links, tabs, the hand-written rows */
+  --accent-soft: #e4e9f3;
+  --spam: #b3402b;       /* evidence for spam, the spam verdict */
+  --ham: #2c6a4c;        /* evidence for ham */
+  --bar: #ece7dc;
+  --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Atkinson Hyperlegible", "Verdana", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --s-1: 0.8125rem; --s0: 1rem; --s1: 1.25rem; --s2: 1.75rem; --s3: 2.6rem;
+  --r: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #12110f; --sheet: #1b1a17; --ink: #ece8e0; --muted: #a29d92; --rule: #33302a;
+    --accent: #9db5e8; --accent-soft: #1f2a40; --spam: #ec8a74; --ham: #79c79f; --bar: #2a2823; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #12110f; --sheet: #1b1a17; --ink: #ece8e0; --muted: #a29d92; --rule: #33302a;
+  --accent: #9db5e8; --accent-soft: #1f2a40; --spam: #ec8a74; --ham: #79c79f; --bar: #2a2823; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--paper); color: var(--ink); font: 400 var(--s0)/1.55 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 56px;
+}
+.wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 22px; padding-top: 22px; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: var(--s3); font-weight: 800; line-height: 1.05; }
+h2 { font-size: var(--s1); font-weight: 600; }
+h3 { font-size: var(--s0); font-weight: 600; }
+p { margin: 0; max-width: 66ch; }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+.muted { color: var(--muted); }
+.small { font-size: var(--s-1); }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* masthead and views */
+.mast { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--paper);
+  margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); padding-inline: max(16px, env(safe-area-inset-left, 0px));
+  border-bottom: 1px solid var(--rule); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--paper); }
+.mast-in { max-width: 1100px; margin: 0 auto; display: flex; align-items: center; gap: 18px; min-height: 58px; flex-wrap: wrap; padding-block: 6px; }
+.brand { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; }
+.brand svg { width: 26px; height: 26px; flex: none; }
+.brand span { font: 800 1.3rem/1 var(--f-display); letter-spacing: -0.01em; }
+.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; min-width: 0; }
+.tabs a { padding: 8px 12px; border-radius: 8px; color: var(--muted); text-decoration: none; font-weight: 700; font-size: var(--s-1); white-space: nowrap; }
+.tabs a:hover { color: var(--ink); }
+.tabs a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); }
+@media (max-width: 640px) { .mast-in { gap: 6px 12px; } .tabs { order: 3; flex-basis: 100%; } }
+.gh { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border: 1px solid var(--rule);
+  border-radius: 999px; background: var(--sheet); color: var(--ink); text-decoration: none; font-size: var(--s-1); font-weight: 700; }
+.gh:hover { border-color: var(--accent); color: var(--accent); }
+.gh svg { width: 16px; height: 16px; fill: currentColor; flex: none; }
+.view { display: grid; gap: 22px; min-width: 0; }
+.intro { display: grid; gap: 10px; }
+.intro h1 em { font-weight: 600; color: var(--accent); font-style: normal; }
+.intro p { font-size: var(--s1); line-height: 1.4; }
+.intro p a, .vtext a, .small a { color: var(--accent); }
+#status { font-size: var(--s-1); }
+.panel { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); padding: 20px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+.main { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 820px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 20px; align-items: start; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn { border: 1px solid var(--rule); background: var(--sheet); padding: 7px 14px; border-radius: 999px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.link { text-decoration: none; color: var(--accent); }
+.vtext { display: grid; gap: 10px; }
+.vtext p { font-size: var(--s-1); }
+
+/* message */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { border: 1px solid var(--rule); background: var(--paper); border-radius: 999px; padding: 4px 11px; font-size: var(--s-1); cursor: pointer; }
+.chips button:hover { border-color: var(--accent); color: var(--accent); }
+.chips button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+textarea { width: 100%; min-height: 280px; resize: vertical; border: 1px solid var(--rule); border-radius: 8px; padding: 12px;
+  font: 400 0.84rem/1.55 var(--f-mono); background: var(--paper); color: var(--ink); }
+
+/* verdict */
+.verdict { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.verdict b { font: 800 3.2rem/1 var(--f-display); font-variant-numeric: tabular-nums; }
+.verdict span { font-size: var(--s1); }
+.meter { height: 12px; border-radius: 6px; background: var(--bar); overflow: hidden; position: relative; }
+.meter i { display: block; height: 100%; border-radius: 6px; }
+.meter::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: var(--sheet); }
+
+/* signed bars */
+.terms { display: grid; gap: 4px; }
+.term { display: grid; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr) 3.4rem; gap: 10px; align-items: center; }
+.term .n { font: 400 0.8rem/1.2 var(--f-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.term .v { font: 400 0.8rem/1 var(--f-mono); text-align: right; font-variant-numeric: tabular-nums; }
+.dbar { position: relative; height: 10px; }
+.dbar::before { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--rule); }
+.dbar i { position: absolute; top: 0; height: 100%; }
+.dbar i.pos { left: 50%; background: var(--spam); border-radius: 0 3px 3px 0; }
+.dbar i.neg { right: 50%; background: var(--ham); border-radius: 3px 0 0 3px; }
+.dbar.one::before { left: 0; }
+.dbar.one i.pos { left: 0; background: var(--accent); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--s-1); color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.hits { display: flex; flex-wrap: wrap; gap: 6px; }
+.hit { font: 400 0.8rem/1.3 var(--f-mono); border: 1px solid var(--rule); border-radius: 6px; padding: 3px 8px; background: var(--paper); }
+.hit b { color: var(--accent); font-weight: 600; }
+.layers { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; counter-reset: l; }
+.layers li { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr); gap: 8px; font-size: var(--s-1); }
+.layers li::before { counter-increment: l; content: counter(l); font: 600 0.8rem/1.6 var(--f-mono); color: var(--accent); }
+
+/* tables */
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: var(--s-1); }
+th, td { text-align: left; padding: 6px 8px 6px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-weight: 700; color: var(--muted); }
+td.num, th.num { text-align: right; }
+td.num { font-family: var(--f-mono); white-space: nowrap; }
+tr.hand td { font-weight: 700; }
+tr.hand td:first-child { color: var(--accent); }
+.tbl { overflow-x: auto; }
+.files { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.files li { display: grid; gap: 2px; }
+.files a { font: 600 var(--s-1)/1.3 var(--f-mono); color: var(--accent); }
+.files span { font-size: var(--s-1); color: var(--muted); }
+footer { font-size: var(--s-1); color: var(--muted); border-top: 1px solid var(--rule); padding-top: 14px; }
+@media (prefers-reduced-motion: no-preference) { .meter i, .dbar i { transition: width .15s ease-out; } }
+</style>
+</head>
+<body>
+<header class="mast">
+  <div class="mast-in">
+    <a class="brand" href="#try" aria-label="WP-Spam, try it">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" style="fill: var(--spam)"/><rect x="13" y="19" width="38" height="27" rx="4" fill="none" style="stroke: var(--sheet)" stroke-width="5"/><path d="M15 22l17 13 17-13" fill="none" style="stroke: var(--sheet)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>WP-Spam</span>
+    </a>
+    <nav class="tabs" aria-label="Views">
+      <a href="#try">Try it</a>
+      <a href="#network">Inside the network</a>
+      <a href="#trust">How far to trust it</a>
+      <a href="#made">How it's made</a>
+    </nav>
+    <a class="gh" href="https://github.com/heldernoid/WP-Spam" target="_blank" rel="noopener" aria-label="WP-Spam on GitHub">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+      <span>GitHub</span>
+    </a>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- ============================== TRY IT ============================== -->
+  <section class="view" data-view="try" aria-label="Try it">
+    <div class="intro">
+      <h1>Paste a message, <em>see what it reads</em></h1>
+      <p>An e-mail, a text message or a link, in English or Portuguese. A neural network reads it with weights that were written by hand, each with its reason. Nothing was trained.</p>
+      <div id="status" class="muted" role="status">Loading the network…</div>
+    </div>
+
+    <div class="main">
+      <section class="panel" aria-labelledby="h-msg">
+        <div class="row" style="justify-content: space-between">
+          <h2 id="h-msg">Message</h2>
+          <button class="btn" id="clear" type="button">Clear</button>
+        </div>
+        <div class="chips" id="chips" role="group" aria-label="Examples"></div>
+        <textarea id="txt" spellcheck="false" aria-label="Message to read"></textarea>
+        <p class="muted small">The examples were written for this page; none comes from the evaluation data. Your text never leaves this page.</p>
+      </section>
+
+      <section class="panel" aria-labelledby="h-verdict">
+        <h2 id="h-verdict">What it thinks</h2>
+        <div class="verdict" aria-live="polite"><b id="pv">–</b><span id="pl"></span></div>
+        <div class="meter" aria-hidden="true"><i id="pm"></i></div>
+        <div class="legend"><span><i style="background: var(--spam)"></i>pushes towards spam</span><span><i style="background: var(--ham)"></i>pushes towards ham</span></div>
+        <h3>The strongest reasons</h3>
+        <div class="terms" id="top"></div>
+        <div class="row"><a class="btn link" href="#network">Every layer's reading →</a></div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ============================== INSIDE THE NETWORK ============================== -->
+  <section class="view" data-view="network" hidden aria-labelledby="h-net">
+    <div class="intro">
+      <h1 id="h-net">Inside the network</h1>
+      <p>Everything behind the verdict for the message on the <a href="#try">Try it</a> tab, layer by layer, from the letters up.</p>
+    </div>
+
+    <div class="grid2">
+      <section class="panel" aria-labelledby="h-chars">
+        <h2 id="h-chars">Character layer</h2>
+        <p class="muted small">Every word is read by stem filters that convolve over letters. A digit, a symbol or a Cyrillic letter counts as the letter it imitates, and some stems are found inside longer words. These words reached a stem only that way:</p>
+        <div class="hits" id="disguised"></div>
+        <p class="muted small" id="hitcount"></p>
+      </section>
+      <section class="panel" aria-labelledby="h-heads">
+        <h2 id="h-heads">Attention heads that fired</h2>
+        <p class="muted small">A head looks from a token to its neighbours: a number next to money is a sum, "click here" next to a link is a call to act. Pooled strength of each relation in this message:</p>
+        <div class="terms" id="heads"></div>
+      </section>
+      <section class="panel" aria-labelledby="h-roles">
+        <h2 id="h-roles">Sentence roles</h2>
+        <p class="muted small">Each sentence is read on its own and given clamped roles; the message layer then looks for the order a pitch is built in (offer → ask → contact, threat → ask). Summed over sentences:</p>
+        <div class="terms" id="roles"></div>
+      </section>
+      <section class="panel" aria-labelledby="h-mlp">
+        <h2 id="h-mlp">MLP units</h2>
+        <p class="muted small">Three layers of named units: concepts (advance fee, phishing, crypto, chatter…), gates (is there any way to act? is this prose?) and their combinations. Contribution to the verdict:</p>
+        <div class="terms" id="mlp"></div>
+      </section>
+    </div>
+    <section class="panel" aria-labelledby="h-parts">
+      <h2 id="h-parts">Pooled evidence read by the output</h2>
+      <p class="muted small">Each named dim is summed over the message and squashed (log of 1 + x), so ten ordinary words cannot outvote one strong one. Largest contributions to the verdict:</p>
+      <div class="terms" id="parts"></div>
+    </section>
+    <section class="panel" aria-labelledby="h-layers">
+      <h2 id="h-layers">The layers</h2>
+      <ol class="layers" id="layers"></ol>
+    </section>
+  </section>
+
+  <!-- ============================== TRUST ============================== -->
+  <section class="view" data-view="trust" hidden aria-labelledby="h-trust">
+    <div class="intro">
+      <h1 id="h-trust">How far to trust it</h1>
+      <p>Nine public datasets, split once into study, dev and a sealed test. The weights were written reading errors on the study split only; the sealed test was run once on the finished network. The comparisons that go against it are here too.</p>
+    </div>
+    <div class="grid2">
+      <section class="panel"><h2>Sealed test</h2><div class="tbl" id="t-sealed"></div><p class="muted small">10,351 messages, run once. The trained model is logistic regression on hashed words, word pairs and URL parts: the classic spam filter. Given the same labels it is far ahead.</p></section>
+      <section class="panel"><h2>By channel</h2><div class="tbl" id="t-channel"></div><p class="muted small">Sealed test, English only. On SMS the hand-written network is level with the model trained on every channel; a model trained on SMS alone (dev) reaches 99.0%.</p></section>
+      <section class="panel"><h2>By source</h2><div class="tbl" id="t-source"></div><p class="muted small">Sealed test. Phishing links and Enron spam are its weakest places.</p></section>
+      <section class="panel"><h2>Mail of a kind never seen</h2><div class="tbl" id="t-unseen"></div><p class="muted small">Dev split. Each source is left out in turn and the trained model learns from the other eight: most of its 97% is knowledge of these nine sources. The hand-written network is scored as it is, but its revisions read errors from every source, so for it no source is fully unseen. The clean comparison is the first draft, written before any label was read: 82.8% against 75.4%.</p></section>
+      <section class="panel"><h2>Word-swap attack</h2><div class="tbl" id="t-attack"></div><p class="muted small">300 caught spam messages, dev split. An attacker who can query the model replaces, one at a time, the word whose swap lowers the score most with an invented word. The hand-written network keeps its evidence in fewer places: this is its main weakness.</p></section>
+      <section class="panel"><h2>Its layers, with a trained output</h2><div class="tbl" id="t-head"></div><p class="muted small">Dev split. The hand-written layers kept as they are and only the output layer (176 weights) trained: with 512 labels it beats a bag-of-words model with 65,875 weights. The layers are a good representation; the hand-set output weights are where most is lost.</p></section>
+    </div>
+  </section>
+
+  <!-- ============================== HOW IT'S MADE ============================== -->
+  <section class="view" data-view="made" hidden aria-labelledby="h-made">
+    <div class="intro">
+      <h1 id="h-made">How it's made</h1>
+      <p>A neural network whose every weight was typed by hand with its reason: no training, no fitting, every decision traceable. A fun experiment, not a production filter.</p>
+    </div>
+    <div class="grid2">
+      <section class="panel">
+        <h2>How the weights were written</h2>
+        <div class="vtext">
+          <p>A first draft came from general knowledge alone, before any label was looked at. Each revision read the network's errors on the study split and added a concept the errors showed missing: receipts against payment requests, news prose, word salad, phishing kits on hacked sites, friends who refer to money they already agreed on. Never a dataset's names or addresses.</p>
+          <p>Then the network grew: sentence and message layers, a character layer of stem filters, a letter-pair layer, 36 attention heads in two layers and a three-layer MLP, to 25,114 non-zero weights. Fourteen times the weights bought less than a point. A hand-written weight is a fact someone has to know and write down; size is not what such a network lacks.</p>
+        </div>
+        <div class="tbl" id="t-history"></div>
+      </section>
+      <section class="panel">
+        <h2>How the page works</h2>
+        <div class="vtext">
+          <p>The page loads the weights (<code>model/spam.json</code>, 110 KB) and the engine (<code>spam.js</code>) and runs the network in your browser on every keystroke. Nothing is sent anywhere.</p>
+          <p>The verdict is the network's output: a logistic of the weighted evidence, spam at 50% or more. The percentage is a score, not a calibrated probability.</p>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Files and the log</h2>
+        <ul class="files">
+          <li><a href="https://github.com/heldernoid/WP-Spam/blob/main/README.md" target="_blank" rel="noopener">README.md</a><span>What it is, the results, how to run it.</span></li>
+          <li><a href="https://github.com/heldernoid/WP-Spam/blob/main/LOG.md" target="_blank" rel="noopener">LOG.md</a><span>How the weights were written: every stage, the numbers before and after, what did not work.</span></li>
+          <li><a href="https://github.com/heldernoid/WP-Spam/blob/main/AGENTS.md" target="_blank" rel="noopener">AGENTS.md</a><span>House rules and how to work on it.</span></li>
+          <li><a href="https://github.com/heldernoid/WP-Spam/blob/main/gen/net.mjs" target="_blank" rel="noopener">gen/net.mjs</a><span>The network itself: every row, head and unit with its reason.</span></li>
+          <li><a href="https://github.com/heldernoid/WP-Spam/blob/main/eval/test-runs.md" target="_blank" rel="noopener">eval/test-runs.md</a><span>Every sealed-test run, recorded whatever the result.</span></li>
+        </ul>
+        <p class="muted small">Weights and code written by Claude Opus 5.5 (Anthropic) with the project's author. Sister projects, built the same way: <a href="https://heldernoid.github.io/WP-CharNet/" target="_blank" rel="noopener">WP-CharNet</a>, a handwriting reader, and <a href="https://heldernoid.github.io/WP-Ductus/" target="_blank" rel="noopener">WP-Ductus</a>, a calligraphy teacher. MIT licence.</p>
+      </section>
+    </div>
+  </section>
+
+  <footer>WP-Spam · a spam, scam and phishing reader with hand-written weights · no training</footer>
+</main>
+
+<script src="spam.js"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  const EX = {
+    "Inheritance": `Subject: CONFIDENTIAL BUSINESS PROPOSAL
+
+Dear Friend,
+I am Barrister James Okoro, personal attorney to the late Mr. Andreas Kell, who died with his family leaving a deposit of US$ 12,500,000.00 (Twelve Million Five Hundred Thousand Dollars) in our bank. No next of kin has come forward. I seek your consent to present you as the beneficiary so the funds can be released to you. You will receive 40 percent. Kindly reply with your full name and private phone number. This transaction is 100% risk free.`,
+    "…with candies": `Subject: CONFIDENTIAL BUSINESS PROPOSAL
+
+Dear Friend,
+I am Barrister James Okoro, personal attorney to the late Mr. Andreas Kell, who died with his family leaving a deposit of 12,500,000.00 candies in our vault. No next of kin has come forward. I seek your consent to present you as the beneficiary so the candies can be released to you. You will receive 40 percent. Kindly reply with your full name and private phone number. This arrangement is completely safe.`,
+    "Mailbox": `Your mailbox is almost full
+
+Dear user@example.org,
+Your email account has exceeded its storage quota. Incoming messages are on hold and will be deleted within 24 hours. To keep your account active, verify your password here:
+http://mail-verify.example-secure.top/wp-content/upgrade/login.php`,
+    "Look-alike": `Your PаyPal account has been l1mited. Please ver1fy your 1dentity within 24 hours to avoid suspension.`,
+    "Sextortion": `I know your password. I recorded you through your webcam while you were on adult sites. Send 0.05 BTC to the wallet below within 48 hours, or the video goes to all your contacts.`,
+    "Parcel": `Your parcel could not be delivered: address incomplete. Pay the 1.99 GBP redelivery fee to schedule delivery: http://royalmail-redeliver.example.top/pay`,
+    "Prize SMS": `URGENT! You have won a £1,000 cash prize! To claim, call 09061701461 now. T&Cs apply. 150p/min. Txt STOP to opt out`,
+    "Engano (PT)": `Boa tarde, enviei 1500MT para o seu numero por engano. Por favor devolva neste numero 841234567, vem em nome de Ana Joaquim. Obrigado`,
+    "Combinado (PT)": `Ola mano, envia aquele valor como combinado para este numero 841234567. Obrigado, ate logo`,
+    "Receipt (PT)": `Confirmado 9XY12AB34CD. Transferiste 500.00MT e a taxa foi de 5.00MT para 841234567 - ANA aos 3/5/24 as 2:10 PM. O teu novo saldo M-Pesa e de 1,250.00MT.`,
+    "Colleague": `Re: budget review
+
+Hi Maria,
+Thanks for sending the draft. I went through the attached spreadsheet and I think the Q3 forecast is a bit high. Can we discuss it at the team meeting on Thursday? Let me know if 10am works.
+
+> Please review the attached before Friday.
+
+Regards,
+Tom`,
+    "Family chat": `hey mom, we went to the beach yesterday, so tired lol. see you tomorrow at 7pm? love you xx`,
+    "Kanelbulle": `In sweden they eat a lot of kannelbulle. Its an instant gratification of sugar and you gain happiness :) win-win`,
+    "Link": `http://secure-account-update.example.tk/paypal/signin/verify/index.php`,
+  };
+
+  // ---- results (README.md, LOG.md and eval/test-runs.md); a trailing 1 marks the hand-written row ----
+  const T = {
+    sealed: [["Hand-written", "58,141", "25,114", "89.5%", 1], ["Trained bag-of-words", "512", "65,875", "87.8%"], ["Trained bag-of-words", "7,723", "240,424", "94.6%"], ["Trained bag-of-words", "58,141", "262,141", "97.1%"]],
+    channel: [["Hand-written", "90.5%", "95.7%", 1], ["Trained, 512 labels", "90.4%", "91.1%"], ["Trained, 7,723 labels", "96.3%", "94.2%"], ["Trained, 58,141 labels", "98.8%", "95.1%"]],
+    source: [["CEAS (e-mail)", "90.1%", "99.4%"], ["Enron (e-mail)", "87.5%", "98.3%"], ["Hannousse (links)", "82.5%", "92.5%"], ["Ling (e-mail)", "97.2%", "99.6%"], ["Mendeley (SMS)", "95.7%", "95.1%"], ["Mozambique (SMS, Portuguese)", "90.2%", "96.8%"], ["Nazario (phishing)", "87.8%", "96.7%"], ["Nigerian fraud", "94.9%", "99.4%"], ["SpamAssassin (e-mail)", "91.0%", "98.7%"], ["All", "89.5%", "97.1%", 1]],
+    unseen: [["CEAS", "89.9%", "90.3%"], ["Enron", "80.5%", "86.9%"], ["Hannousse (links)", "54.0%", "80.8%"], ["Ling", "95.2%", "96.3%"], ["Mendeley (SMS)", "56.3%", "95.5%"], ["Mozambique (SMS, Portuguese)", "40.4%", "91.8%"], ["Nazario (phishing)", "57.2%", "90.3%"], ["Nigerian fraud", "98.3%", "94.6%"], ["SpamAssassin", "93.3%", "92.8%"], ["All, each unseen", "75.4%", "89.4%", 1]],
+    attack: [["Trained bag-of-words, 58,141 labels", "97.0%", "96.0%", "92.0%"], ["Hand-written", "85.3%", "77.3%", "67.7%", 1]],
+    head: [["Hand-written, every weight", "58,141", "89.4%", 1], ["Its layers + trained output", "512", "89.3%"], ["Its layers + trained output", "7,723", "91.2%"], ["Its layers + trained output", "58,141", "91.3%"], ["Trained bag-of-words", "512", "87.6%"], ["Trained bag-of-words", "58,141", "97.0%"]],
+    history: [["First draft, general knowledge only", "0", "1,157", "83.4%"], ["One revision", "7,723", "1,403", "87.5%"], ["Second revision", "58,141", "1,674", "88.6%"], ["Sentence, message and gate layers", "58,141", "1,781", "88.8%"], ["Character layer, 36 heads, 3-layer MLP", "58,141", "25,114", "89.5%", 1]],
+  };
+  function table(el, head, rows) {
+    $(el).innerHTML = `<table><thead><tr>${head.map((h, i) => `<th${i ? ' class="num"' : ""}>${h}</th>`).join("")}</tr></thead><tbody>` +
+      rows.map(r => `<tr${r.length > head.length ? ' class="hand"' : ""}>${r.slice(0, head.length).map((c, i) => `<td${i ? ' class="num"' : ""}>${esc(c)}</td>`).join("")}</tr>`).join("") + "</tbody></table>";
+  }
+  table("t-sealed", ["Weights", "Labels", "Non-zero weights", "Accuracy"], T.sealed);
+  table("t-channel", ["", "E-mail", "SMS"], T.channel);
+  table("t-source", ["Source", "Hand-written", "Trained"], T.source);
+  table("t-unseen", ["Left-out source", "Trained on the other eight", "Hand-written"], T.unseen);
+  table("t-attack", ["Model", "1 swap", "2 swaps", "3 swaps"], T.attack);
+  table("t-head", ["Model", "Labels", "Accuracy"], T.head);
+  table("t-history", ["Stage", "Labels read", "Non-zero weights", "Sealed test"], T.history);
+
+  // ---- the message ----
+  let M = null, OUTH = {};
+  const HEADOUT = new Map();
+  const chips = $("chips");
+  for (const k of Object.keys(EX)) {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = k;
+    b.onclick = () => { $("txt").value = EX[k]; mark(k); go(); };
+    chips.appendChild(b);
+  }
+  function mark(k) { for (const b of chips.children) b.setAttribute("aria-pressed", b.textContent === k ? "true" : "false"); }
+  $("txt").addEventListener("input", () => { mark(null); go(); });
+  $("clear").onclick = () => { $("txt").value = ""; mark(null); go(); $("txt").focus(); };
+
+  function bars(el, items, max, one) {
+    $(el).innerHTML = items.map(([n, v]) => {
+      const w = Math.min(one ? 100 : 50, (one ? 100 : 50) * Math.abs(v) / max);
+      return `<div class="term"><span class="n" title="${esc(n)}">${esc(n)}</span><span class="dbar${one ? " one" : ""}"><i class="${v >= 0 ? "pos" : "neg"}" style="width:${w}%"></i></span><span class="v">${v >= 0 ? (one ? "" : "+") : "−"}${Math.abs(v).toFixed(2)}</span></div>`;
+    }).join("") || `<p class="muted small">None active.</p>`;
+  }
+  function go() {
+    if (!M) return;
+    const text = $("txt").value;
+    const t = WPSpam.run(M, text, { trace: true });
+    const p = t.p, spam = p >= 0.5;
+    $("pv").textContent = text.trim() ? (100 * p).toFixed(1) + "%" : "–";
+    $("pv").style.color = spam ? "var(--spam)" : "var(--ham)";
+    $("pl").textContent = text.trim() ? (spam ? "spam, a scam or phishing" : "ham: ordinary mail") : "paste or pick a message";
+    $("pm").style.width = text.trim() ? (100 * p) + "%" : "0";
+    $("pm").style.background = spam ? "var(--spam)" : "var(--ham)";
+    // the strongest reasons: the output's terms, pooled dims and MLP units together
+    const reasons = Object.entries(t.parts).map(([k, v]) => [k.startsWith("h:") ? k.slice(2) + " (unit)" : k, v]);
+    bars("top", reasons.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 8), 3);
+    // character layer: only disguises (a stem read through look-alike characters or found inside a longer word)
+    const odd = (t.hits || []).filter(([raw, h]) => { const w = raw.toLowerCase(); return !w.startsWith(h) && !w.replace(/(.)\1+/g, "$1").startsWith(h); });
+    const uniq = [...new Map(odd.map(([r, h]) => [r, h])).entries()];
+    $("disguised").innerHTML = uniq.length ? uniq.slice(0, 14).map(([r, h]) => `<span class="hit">${esc(r)} → <b>${esc(h)}</b></span>`).join("") : `<span class="muted small">None in this message.</span>`;
+    $("hitcount").textContent = `${(t.hits || []).length} of ${t.tokens} tokens reached a stem filter.`;
+    bars("heads", [...HEADOUT].map(([out, names]) => [names.length === 1 && names[0] === out ? out : `${out} (${names.join(", ")})`, t.F[out] || 0]).filter(([, v]) => v > 0.01).sort((a, b) => b[1] - a[1]), 2.5, true);
+    bars("roles", Object.entries(t.roles || {}).filter(([, v]) => v > 0.05).sort((a, b) => b[1] - a[1]), 4, true);
+    bars("mlp", M.mlp.flat().map(h => [h.name, (t.hidden[h.name] || 0) * (OUTH[h.name] || 0)]).filter(([, v]) => Math.abs(v) > 0.005).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])), 3);
+    bars("parts", Object.entries(t.parts).filter(([k]) => !k.startsWith("h:")).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 12), 3);
+  }
+
+  fetch("model/spam.json").then(r => r.json()).then(j => {
+    const t0 = performance.now();
+    M = WPSpam.parse(j);
+    OUTH = Object.fromEntries(M.outH);
+    for (const h of M.heads) { if (!HEADOUT.has(h.out)) HEADOUT.set(h.out, []); HEADOUT.get(h.out).push(h.name); }
+    const L1 = M.heads.filter(h => (h.layer || 1) === 1).length;
+    $("layers").innerHTML = [
+      `<b>Character layer.</b> Each character is a vector over letters; ${M.filters.length.toLocaleString("en")} stem filters convolve over them at a word's start, over the whole word, or inside it. One winning stem per word.`,
+      `<b>Letter-pair layer.</b> ${M.letterRare.length} letter pairs English and Portuguese words almost never contain, and ${M.letterOnset.length} consonant pairs a word may start with. A word that breaks them cannot be read aloud.`,
+      `<b>Embedding.</b> The winning stem's row over ${M.dims.length} named dims, ${Object.keys(M.phrases).length.toLocaleString("en")} phrases of 2–4 words, token shapes (sums, phone numbers, shortcodes, emoticons) and URL features.`,
+      `<b>Attention, two layers.</b> ${L1} heads read the embeddings; ${M.heads.length - L1} more read what the first layer wrote.`,
+      `<b>Pooling.</b> Sum over tokens, then log(1 + x); URL features are max-pooled over the message's links.`,
+      `<b>Sentence and message layers.</b> ${M.roles.length} clamped roles per sentence, their totals and shares, and ${M.arcs.length} arcs across sentences.`,
+      `<b>MLP.</b> ${M.mlp.map(l => l.length).join(" + ")} named units in three layers.`,
+      `<b>Output.</b> A logistic of the weighted evidence: spam at 50% or more.`,
+    ].map(s => `<li><span>${s}</span></li>`).join("");
+    $("status").textContent = `Loaded 25,114 hand-written weights (${M.filters.length.toLocaleString("en")} stem filters, ${Object.keys(M.phrases).length.toLocaleString("en")} phrases, ${M.heads.length} attention heads) in ${Math.round(performance.now() - t0)} ms. Everything runs in your browser.`;
+    $("txt").value = EX["Inheritance"]; mark("Inheritance"); go();
+  }).catch(e => { $("status").textContent = "Could not load the network (" + e.message + "). Serve this folder over http, for example with: python3 -m http.server"; });
+
+  // ---- views on the URL hash ----
+  const VIEWS = ["try", "network", "trust", "made"];
+  function route() {
+    const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "try";
+    for (const s of document.querySelectorAll("[data-view]")) s.hidden = s.dataset.view !== v;
+    for (const a of document.querySelectorAll(".tabs a")) a.setAttribute("aria-current", a.getAttribute("href") === "#" + v ? "page" : "false");
+    window.scrollTo(0, 0);
+  }
+  addEventListener("hashchange", route);
+  route();
+})();
+</script>
+</body>
+</html>

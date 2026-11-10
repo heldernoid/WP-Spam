@@ -6,6 +6,8 @@ not a production filter.
 
 **Demo:** https://heldernoid.github.io/WP-Spam/ (Try it · Inside the network · How far to trust it · How it's made)
 
+![WP-Spam demo: example messages read by the network, from an inheritance scam at 100% to a colleague's e-mail and an M-Pesa receipt read as ham](demo.gif)
+
 ```
 text -> tokens
      -> character layer          each character is a vector over letters ("0" is mostly "o", "1" is "i" or "l", Cyrillic
